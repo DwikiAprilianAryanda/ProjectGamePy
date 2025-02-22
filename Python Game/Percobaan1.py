@@ -18,7 +18,9 @@ pygame.display.set_caption("Game dengan Interaksi NPC dan Barang")
 # State untuk mengontrol video opening
 class GameState:
     OPENING = 0
-    PLAYING = 1
+    MENU = 1
+    PLAYING = 2
+    INGAME_MENU = 3  # State baru untuk menu in-game
 
 # Load gambar background untuk tiap area
 backgrounds = {
@@ -90,6 +92,9 @@ inventory_padding = 10
 # Animasi karakter
 current_frame = 0
 moving_left = False
+jump_frame = 0  # Frame untuk animasi lompat
+jump_animation_speed = 0.1  # Kecepatan animasi lompat (detik per frame)
+jump_time_elapsed = 0  # Waktu yang telah berlalu untuk animasi lompat
 
 # Animasi NPC
 npc_current_frame = 0
@@ -235,14 +240,168 @@ class VideoOpening:
             pygame.display.flip()
             pygame.time.delay(5)
 
+# Font untuk menu
+menu_font = pygame.font.Font(None, 48)
+
+def render_main_menu(selected_option):
+    screen.fill((0, 0, 0))  # Latar belakang hitam
+    
+    # Judul
+    title_text = menu_font.render("Treasure Hunt Adventure", True, (255, 255, 255))
+    title_rect = title_text.get_rect(center=(WIDTH // 2, HEIGHT // 4))
+    screen.blit(title_text, title_rect)
+    
+    # Opsi menu
+    options = ["Start Game", "Exit"]
+    for i, option in enumerate(options):
+        color = (255, 255, 0) if i == selected_option else (255, 255, 255)
+        option_text = menu_font.render(option, True, color)
+        option_rect = option_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + i * 60))
+        screen.blit(option_text, option_rect)
+    
+    pygame.display.update()
+
+def handle_main_menu():
+    selected_option = 0
+    running_menu = True
+    
+    while running_menu:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP:
+                    selected_option = max(0, selected_option - 1)
+                elif event.key == pygame.K_DOWN:
+                    selected_option = min(1, selected_option + 1)
+                elif event.key == pygame.K_RETURN:
+                    if selected_option == 0:  # Start Game
+                        return True
+                    elif selected_option == 1:  # Exit
+                        return False
+        
+        render_main_menu(selected_option)
+        clock.tick(60)
+    
+    return False
+
+# Variabel untuk menu in-game
+show_ingame_menu = False
+
+def render_ingame_menu(selected_option):
+    # Background semi-transparan
+    overlay = pygame.Surface((WIDTH, HEIGHT))
+    overlay.fill((0, 0, 0))
+    overlay.set_alpha(128)
+    screen.blit(overlay, (0, 0))
+    
+    # Opsi menu
+    options = ["Resume", "Restart", "Back to Main Menu"]
+    for i, option in enumerate(options):
+        color = (255, 255, 0) if i == selected_option else (255, 255, 255)
+        option_text = menu_font.render(option, True, color)
+        option_rect = option_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + i * 60))
+        screen.blit(option_text, option_rect)
+    
+    pygame.display.update()
+
+def handle_ingame_menu():
+    selected_option = 0
+    running_menu = True
+    
+    while running_menu:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "exit"
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP:
+                    selected_option = max(0, selected_option - 1)
+                elif event.key == pygame.K_DOWN:
+                    selected_option = min(2, selected_option + 1)
+                elif event.key == pygame.K_RETURN:
+                    if selected_option == 0:  # Resume
+                        return "resume"
+                    elif selected_option == 1:  # Restart
+                        return "restart"
+                    elif selected_option == 2:  # Back to Main Menu
+                        return "menu"
+                elif event.key == pygame.K_ESCAPE:  # Escape untuk resume
+                    return "resume"
+        
+        render_ingame_menu(selected_option)
+        clock.tick(60)
+    
+    return "resume"
+
+def reset_game():
+    global x, y, current_area, is_jumping, jump_velocity, current_frame, moving_left
+    global reward, reward_time, reward_y_offset, reward_scale, reward_animating
+    global reward_rotation, reward_shake_offset, reward_float_offset, reward_pulse_scale, reward_animation_time
+    global chests_state, inventory, show_inventory, show_dialog, dialog_index
+    global npc_x, npc_y, jump_frame, jump_time_elapsed  # Tambahkan npc_x dan npc_y ke dalam variabel global yang direset
+    
+    # Reset posisi karakter
+    x, y = 0, 465
+    current_area = 0
+    is_jumping = False
+    jump_velocity = 0
+    current_frame = 0
+    moving_left = False
+    jump_frame = 0  # Reset frame lompat
+    jump_time_elapsed = 0  # Reset waktu animasi lompat
+    
+    # Reset posisi NPC sesuai area awal (current_area = 0)
+    npc_x, npc_y = npc_positions[current_area]
+    
+    # Reset reward
+    reward = None
+    reward_time = 0
+    reward_y_offset = 0
+    reward_scale = 1.0
+    reward_animating = False
+    reward_rotation = 0
+    reward_shake_offset = 0
+    reward_float_offset = 0
+    reward_pulse_scale = 1.0
+    reward_animation_time = 0
+    
+    # Reset chests
+    chests_state = {
+        0: {"opened": False, "animating": False, "frame": 0, "opened_time": None},
+        1: {"opened": False, "animating": False, "frame": 0, "opened_time": None}
+    }
+    
+    # Reset inventory
+    inventory = {"Koin Emas": 0, "Pedang": 0, "Potion": 0, "Pakaian Baru": 0}
+    show_inventory = False
+    
+    # Reset dialog
+    show_dialog = False
+    dialog_index = 0
+
 # Modifikasi fungsi play_opening_video
 def play_opening_video():
     video_player = VideoOpening()
     return video_player.play_all_videos()
 
 def animate_character():
-    frame_y = sprite_height * (9 if moving_left else 11)
-    frame_x = current_frame * sprite_width
+    global current_frame, jump_frame, jump_time_elapsed
+    
+    if is_jumping:
+        # Animasi lompat
+        jump_time_elapsed += 1 / 60  # Tambahkan waktu berdasarkan frame rate (60 FPS)
+        if jump_time_elapsed >= jump_animation_speed:
+            jump_frame = (jump_frame + 1) % frame_count  # Siklus frame lompat
+            jump_time_elapsed = 0
+        
+        # Pilih baris sprite berdasarkan arah hadap karakter
+        frame_y = sprite_height * (2 if moving_left else 2)  # Asumsi baris 6 untuk kiri, 7 untuk kanan
+        frame_x = jump_frame * sprite_width
+    else:
+        # Animasi berjalan atau idle
+        frame_y = sprite_height * (9 if moving_left else 11)  # Baris 9 untuk kiri, 11 untuk kanan
+        frame_x = current_frame * sprite_width
+    
     return sprite_sheet.subsurface((frame_x, frame_y, sprite_width, sprite_height))
 
 def animate_npc():
@@ -387,133 +546,157 @@ npc_x, npc_y = npc_positions[current_area]
 while running:
     if current_state == GameState.OPENING:
         if play_opening_video():
-            current_state = GameState.PLAYING
+            current_state = GameState.MENU  # Pindah ke menu setelah opening
         else:
             running = False
         continue
+    
+    elif current_state == GameState.MENU:
+        if handle_main_menu():
+            current_state = GameState.PLAYING  # Mulai game jika "Start Game" dipilih
+        else:
+            running = False  # Keluar jika "Exit" dipilih atau window ditutup
+        continue
+
+    elif current_state == GameState.PLAYING:        
+        screen.fill((0, 0, 0))
         
-    screen.fill((0, 0, 0))
-    
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_e:
-                chest_x, chest_y = chest_positions[current_area]
-                chest_distance = ((x - chest_x) ** 2 + (y - chest_y) ** 2) ** 0.5
-                if chest_distance < 100:
-                    open_chest(current_area)
-                npc_x, npc_y = npc_positions[current_area]
-                distance_to_npc = ((x - npc_x) ** 2 + (y - npc_y) ** 2) ** 0.5
-                if distance_to_npc < 100:
-                    show_npc_dialog()
-            if event.key == pygame.K_UP and not is_jumping and not show_dialog:
-                is_jumping = True
-                jump_velocity = -10
-            if event.key == pygame.K_i:  # Tombol 'I' untuk toggle inventori
-                show_inventory = not show_inventory
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_e:
+                    chest_x, chest_y = chest_positions[current_area]
+                    chest_distance = ((x - chest_x) ** 2 + (y - chest_y) ** 2) ** 0.5
+                    if chest_distance < 100:
+                        open_chest(current_area)
+                    npc_x, npc_y = npc_positions[current_area]
+                    distance_to_npc = ((x - npc_x) ** 2 + (y - npc_y) ** 2) ** 0.5
+                    if distance_to_npc < 100:
+                        show_npc_dialog()
+                if event.key == pygame.K_UP and not is_jumping and not show_dialog:
+                    is_jumping = True
+                    jump_velocity = -10
+                if event.key == pygame.K_i:  # Tombol 'I' untuk toggle inventori
+                    show_inventory = not show_inventory
+                if event.key == pygame.K_ESCAPE:  # Tombol Escape untuk membuka menu in-game
+                    current_state = GameState.INGAME_MENU
 
-    if is_jumping:
-        y += jump_velocity  # Update posisi karakter secara vertikal
-        jump_velocity += gravity  # Tambahkan gravitasi
-        if y >= ground_y:  # Jika sudah menyentuh tanah
-            y = ground_y
-            is_jumping = False  # Reset status lompat
-    
-    if not show_dialog:
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT]:
-            if not (current_area == 0 and x <= 0):  # Tambah batas kiri di Area 0
-                x -= speed
-                current_frame = (current_frame + 1) % frame_count
-                moving_left = True
-        elif keys[pygame.K_RIGHT]:
-            if not (current_area == 1 and x >= WIDTH - 64):  # Tambah batas kanan di Area 1
-                x += speed
-                current_frame = (current_frame + 1) % frame_count
-                moving_left = False
+        if is_jumping:
+            y += jump_velocity  # Update posisi karakter secara vertikal
+            jump_velocity += gravity  # Tambahkan gravitasi
+            if y >= ground_y:  # Jika sudah menyentuh tanah
+                y = ground_y
+                is_jumping = False  # Reset status lompat
+                jump_frame = 0  # Reset frame lompat saat mendarat
+                jump_time_elapsed = 0  # Reset waktu animasi lompat
+        
+        if not show_dialog:
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LEFT]:
+                if not (current_area == 0 and x <= 0):  # Tambah batas kiri di Area 0
+                    x -= speed
+                    current_frame = (current_frame + 1) % frame_count
+                    moving_left = True
+            elif keys[pygame.K_RIGHT]:
+                if not (current_area == 1 and x >= WIDTH - 64):  # Tambah batas kanan di Area 1
+                    x += speed
+                    current_frame = (current_frame + 1) % frame_count
+                    moving_left = False
 
+                
+    # Cek perubahan area
+        previous_area = current_area  # Simpan area sebelum berubah
+        if x < 0 and current_area > 0:
+            current_area -= 1
+            x = WIDTH - 64  
+        elif x > WIDTH - 64 and current_area < 1:
+            current_area += 1
+            x = 0  
+        
+        # Jika area berubah, perbarui posisi NPC
+        if current_area != previous_area:
+            npc_x, npc_y = npc_positions[current_area]  # Hanya ubah posisi saat pindah area
+
+        # Cek respawn chest
+        current_time = pygame.time.get_ticks()
+        for area in chests_state:
+            if chests_state[area]["opened"] and chests_state[area]["opened_time"]:
+                time_since_opened = current_time - chests_state[area]["opened_time"]
+                if time_since_opened >= 7000:  # 7 detik dalam milidetik
+                    chests_state[area]["opened"] = False
+                    chests_state[area]["animating"] = False
+                    chests_state[area]["frame"] = 0
+                    chests_state[area]["opened_time"] = None
+
+        # Render game
+        screen.blit(backgrounds[current_area], (0, 0))
+        screen.blit(animate_character(), (x, y))
+        screen.blit(animate_npc(), (npc_x, npc_y))
+
+        # Render chest
+        chest_x, chest_y = chest_positions[current_area]
+        if not chests_state[current_area]["opened"]:
+            screen.blit(animate_chest(current_area), (chest_x, chest_y))
+
+        # Tampilkan ikon E jika dekat dengan NPC atau chest yang belum dibuka
+        distance_to_npc = ((x - npc_x) ** 2 + (y - npc_y) ** 2) ** 0.5
+        chest_distance = ((x - chest_x) ** 2 + (y - chest_y) ** 2) ** 0.5
+        
+        if (distance_to_npc < 100 and not show_dialog) or (chest_distance < 100 and not chests_state[current_area]["opened"]):
+            question_frame = animate_question()
+            question_frame = pygame.transform.scale(question_frame, (32, 32))
+            if distance_to_npc < 100:
+                screen.blit(question_frame, (npc_x + npc_sprite_width // 2 + 15, npc_y - 10))
+            if chest_distance < 100 and not chests_state[current_area]["opened"]:
+                screen.blit(question_frame, (chest_x + chest_sprite_width // 2, chest_y - 10))
+
+        # Tampilkan reward
+        if reward and pygame.time.get_ticks() - reward_time < reward_display_duration:
+            reward_image = reward_images[reward]
+            elapsed_time = pygame.time.get_ticks() - reward_time
+            animated_reward, reward_pos = animate_reward(reward, reward_image, elapsed_time)
+            screen.blit(animated_reward, reward_pos)
+        elif reward:  # Reset saat reward hilang dan tambahkan ke inventori
+            inventory[reward] += 1  # Tambahkan reward ke inventori
+            reward = None
+            reward_y_offset = 0
+            reward_scale = 1.0
+            reward_animating = False
+            reward_rotation = 0
+            reward_shake_offset = 0
+            reward_float_offset = 0
+            reward_pulse_scale = 1.0
+            reward_animation_time = 0
+
+        # Tampilkan dialog
+        if show_dialog:
+            dialog_text = dialog_lines[dialog_index]
+            dialog_surface = font.render(dialog_text, True, (255, 255, 255))
+            dialog_rect = dialog_surface.get_rect(center=(WIDTH // 2, HEIGHT - 50))
             
-  # Cek perubahan area
-    previous_area = current_area  # Simpan area sebelum berubah
-    if x < 0 and current_area > 0:
-        current_area -= 1
-        x = WIDTH - 64  
-    elif x > WIDTH - 64 and current_area < 1:
-        current_area += 1
-        x = 0  
-    
-    # Jika area berubah, perbarui posisi NPC
-    if current_area != previous_area:
-        npc_x, npc_y = npc_positions[current_area]  # Hanya ubah posisi saat pindah area
+            dialog_bg = pygame.Surface((dialog_surface.get_width() + 20, dialog_surface.get_height() + 20))
+            dialog_bg.fill((0, 0, 0))
+            dialog_bg.set_alpha(128)
+            screen.blit(dialog_bg, dialog_rect)
+            screen.blit(dialog_surface, dialog_rect)
 
-    # Cek respawn chest
-    current_time = pygame.time.get_ticks()
-    for area in chests_state:
-        if chests_state[area]["opened"] and chests_state[area]["opened_time"]:
-            time_since_opened = current_time - chests_state[area]["opened_time"]
-            if time_since_opened >= 7000:  # 7 detik dalam milidetik
-                chests_state[area]["opened"] = False
-                chests_state[area]["animating"] = False
-                chests_state[area]["frame"] = 0
-                chests_state[area]["opened_time"] = None
+        # Render inventori
+        render_inventory()
 
-    # Render game
-    screen.blit(backgrounds[current_area], (0, 0))
-    screen.blit(animate_character(), (x, y))
-    screen.blit(animate_npc(), (npc_x, npc_y))
-
-    # Render chest
-    chest_x, chest_y = chest_positions[current_area]
-    if not chests_state[current_area]["opened"]:
-        screen.blit(animate_chest(current_area), (chest_x, chest_y))
-
-    # Tampilkan ikon E jika dekat dengan NPC atau chest yang belum dibuka
-    distance_to_npc = ((x - npc_x) ** 2 + (y - npc_y) ** 2) ** 0.5
-    chest_distance = ((x - chest_x) ** 2 + (y - chest_y) ** 2) ** 0.5
-    
-    if (distance_to_npc < 100 and not show_dialog) or (chest_distance < 100 and not chests_state[current_area]["opened"]):
-        question_frame = animate_question()
-        question_frame = pygame.transform.scale(question_frame, (32, 32))
-        if distance_to_npc < 100:
-            screen.blit(question_frame, (npc_x + npc_sprite_width // 2 + 15, npc_y - 10))
-        if chest_distance < 100 and not chests_state[current_area]["opened"]:
-            screen.blit(question_frame, (chest_x + chest_sprite_width // 2, chest_y - 10))
-
-    # Tampilkan reward
-    if reward and pygame.time.get_ticks() - reward_time < reward_display_duration:
-        reward_image = reward_images[reward]
-        elapsed_time = pygame.time.get_ticks() - reward_time
-        animated_reward, reward_pos = animate_reward(reward, reward_image, elapsed_time)
-        screen.blit(animated_reward, reward_pos)
-    elif reward:  # Reset saat reward hilang dan tambahkan ke inventori
-        inventory[reward] += 1  # Tambahkan reward ke inventori
-        reward = None
-        reward_y_offset = 0
-        reward_scale = 1.0
-        reward_animating = False
-        reward_rotation = 0
-        reward_shake_offset = 0
-        reward_float_offset = 0
-        reward_pulse_scale = 1.0
-        reward_animation_time = 0
-
-    # Tampilkan dialog
-    if show_dialog:
-        dialog_text = dialog_lines[dialog_index]
-        dialog_surface = font.render(dialog_text, True, (255, 255, 255))
-        dialog_rect = dialog_surface.get_rect(center=(WIDTH // 2, HEIGHT - 50))
-        
-        dialog_bg = pygame.Surface((dialog_surface.get_width() + 20, dialog_surface.get_height() + 20))
-        dialog_bg.fill((0, 0, 0))
-        dialog_bg.set_alpha(128)
-        screen.blit(dialog_bg, dialog_rect)
-        screen.blit(dialog_surface, dialog_rect)
-
-    # Render inventori
-    render_inventory()
-
-    pygame.display.update()
+        pygame.display.update()
+    elif current_state == GameState.INGAME_MENU:
+        action = handle_ingame_menu()
+        if action == "resume":
+            current_state = GameState.PLAYING
+        elif action == "restart":
+            reset_game()
+            current_state = GameState.PLAYING
+        elif action == "menu":
+            reset_game()  # Reset sebelum kembali ke menu utama
+            current_state = GameState.MENU
+        elif action == "exit":
+            running = False
     clock.tick(60)
 
 pygame.quit()

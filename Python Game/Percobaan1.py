@@ -15,6 +15,9 @@ WIDTH, HEIGHT = 800, 600
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Game dengan Interaksi NPC dan Barang")
 
+# Variabel untuk backsound
+background_music_playing = False
+
 # State untuk mengontrol video opening
 class GameState:
     OPENING = 0
@@ -27,6 +30,10 @@ backgrounds = {
     0: pygame.transform.scale(pygame.image.load("assets/background2.png"), (WIDTH, HEIGHT)),
     1: pygame.transform.scale(pygame.image.load("assets/background.png"), (WIDTH, HEIGHT))
 }
+
+# Load background music
+pygame.mixer.music.load("assets/background_music.mp3")  # Ganti dengan nama file audio kamu
+pygame.mixer.music.set_volume(0.5)  # Atur volume (0.0 - 1.0)
 
 # Sprite karakter
 sprite_sheet = pygame.image.load("assets/sara.png")  
@@ -540,25 +547,34 @@ def show_npc_dialog():
 # Game loop
 running = True
 clock = pygame.time.Clock()
-
 npc_x, npc_y = npc_positions[current_area]
 
 while running:
     if current_state == GameState.OPENING:
         if play_opening_video():
-            current_state = GameState.MENU  # Pindah ke menu setelah opening
+            current_state = GameState.MENU
         else:
             running = False
         continue
     
     elif current_state == GameState.MENU:
+        
+        if background_music_playing:
+            pygame.mixer.music.stop()
+            background_music_playing = False
+        
         if handle_main_menu():
-            current_state = GameState.PLAYING  # Mulai game jika "Start Game" dipilih
+            current_state = GameState.PLAYING
         else:
-            running = False  # Keluar jika "Exit" dipilih atau window ditutup
+            running = False
         continue
 
     elif current_state == GameState.PLAYING:        
+        # Mulai backsound jika belum diputar
+        
+        if not background_music_playing:
+            pygame.mixer.music.play(-1)  # -1 untuk looping tanpa henti
+            background_music_playing = True                  
         screen.fill((0, 0, 0))
         
         for event in pygame.event.get():
@@ -604,8 +620,7 @@ while running:
                     current_frame = (current_frame + 1) % frame_count
                     moving_left = False
 
-                
-    # Cek perubahan area
+        # Cek perubahan area
         previous_area = current_area  # Simpan area sebelum berubah
         if x < 0 and current_area > 0:
             current_area -= 1
@@ -616,7 +631,7 @@ while running:
         
         # Jika area berubah, perbarui posisi NPC
         if current_area != previous_area:
-            npc_x, npc_y = npc_positions[current_area]  # Hanya ubah posisi saat pindah area
+            npc_x, npc_y = npc_positions[current_area]
 
         # Cek respawn chest
         current_time = pygame.time.get_ticks()
@@ -685,6 +700,7 @@ while running:
         render_inventory()
 
         pygame.display.update()
+
     elif current_state == GameState.INGAME_MENU:
         action = handle_ingame_menu()
         if action == "resume":
@@ -693,10 +709,17 @@ while running:
             reset_game()
             current_state = GameState.PLAYING
         elif action == "menu":
-            reset_game()  # Reset sebelum kembali ke menu utama
+            reset_game()
+            pygame.mixer.music.stop()  # Hentikan musik saat kembali ke menu
+            background_music_playing = False
             current_state = GameState.MENU
         elif action == "exit":
             running = False
+
     clock.tick(60)
+
+# Hentikan musik saat game berakhir
+if background_music_playing:
+    pygame.mixer.music.stop()
 
 pygame.quit()
